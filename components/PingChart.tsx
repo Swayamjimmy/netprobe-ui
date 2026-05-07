@@ -2,20 +2,24 @@
 
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
 
+// Change the interface
 interface PingChartProps {
-  packets: { seq: number; rtt: number; ttl: number }[];
+  packets: { seq: number; rtt_ms: number; ttl: number }[];
   result: any;
 }
+
+
 
 export default function PingChart({ packets, result }: PingChartProps) {
   if (packets.length === 0) {
     return <p className="text-gray-500">Waiting for ping data...</p>;
   }
 
-  const chartData = packets.map((p) => ({
-    seq: p.seq,
-    rtt: Math.round(p.rtt * 100) / 100,
-  }));
+  // Change the mapping
+const chartData = packets.map((p) => ({
+  seq: p.seq,
+  rtt: Math.round(p.rtt_ms * 100) / 100,
+}));
 
   return (
     <div>
