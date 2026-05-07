@@ -11,11 +11,17 @@ interface Hop {
   geo?: { city: string; country: string; isp: string };
 }
 
+
 export default function NetworkTopology({ hops }: { hops: Hop[] }) {
   const svgRef = useRef<SVGSVGElement>(null);
+  
 
-  useEffect(() => {
+   useEffect(() => {
     if (!svgRef.current || hops.length === 0) return;
+
+    // Filter out * hops that add clutter
+    const validHops = hops.filter((h) => h.ip !== "*" && h.ip !== "");
+    if (validHops.length === 0) return;
 
     const width = svgRef.current.clientWidth;
     const height = 300;
@@ -24,12 +30,13 @@ export default function NetworkTopology({ hops }: { hops: Hop[] }) {
 
     const svg = d3.select(svgRef.current).attr("width", width).attr("height", height);
 
-    const nodes = hops.map((h, i) => ({
+    // Use validHops instead of hops from here on
+    const nodes = validHops.map((h, i) => ({
       id: h.ip || `hop-${h.ttl}`,
       label: h.host || h.ip || `*`,
       latency: h.latency_ms,
       ttl: h.ttl,
-      type: i === 0 ? "source" : i === hops.length - 1 ? "destination" : "hop",
+      type: i === 0 ? "source" : i === validHops.length - 1 ? "destination" : "hop",
     }));
 
     const links = nodes.slice(0, -1).map((_, i) => ({
@@ -38,12 +45,13 @@ export default function NetworkTopology({ hops }: { hops: Hop[] }) {
       latency: nodes[i + 1].latency,
     }));
 
+    // Linear left-to-right layout instead of random force
     const simulation = d3
       .forceSimulation(nodes as any)
-      .force("link", d3.forceLink(links).id((d: any) => d.id).distance(60))
-      .force("charge", d3.forceManyBody().strength(-100))
-      .force("x", d3.forceX(width / 2).strength(0.1))
-      .force("y", d3.forceY(height / 2).strength(0.3));
+      .force("link", d3.forceLink(links).id((d: any) => d.id).distance(80))
+      .force("charge", d3.forceManyBody().strength(-200))
+      .force("x", d3.forceX().x((d: any, i: number) => 40 + (i / (nodes.length - 1 || 1)) * (width - 80)).strength(0.8))
+      .force("y", d3.forceY(height / 2).strength(0.5));
 
     const link = svg
       .selectAll("line")
