@@ -32,7 +32,7 @@ export default function Dashboard({
   const [pingPackets, setPingPackets] = useState<any[]>([]);
   const [traceHops, setTraceHops] = useState<any[]>([]);
   
-  // New state to manage the Globalping delay
+  // State to manage the Globalping delay
   const [traceStatus, setTraceStatus] = useState<"idle" | "initializing" | "tracing" | "complete">("idle");
 
   const [clientIP, setClientIP] = useState("");
@@ -41,9 +41,7 @@ export default function Dashboard({
 
   useEffect(() => {
     const wsUrl = API_URL.replace(/^http/, "ws") + "/ws";
-
     const ws = new WebSocket(wsUrl);
-
     wsRef.current = ws;
 
     ws.onmessage = (event: MessageEvent) => {
@@ -63,7 +61,7 @@ export default function Dashboard({
           break;
 
         case "traceroute_hop":
-          setTraceStatus("tracing"); // Update status once data starts flowing
+          setTraceStatus("tracing"); 
           setTraceHops((prev) => {
             // Prevent duplicate hops (Next.js Strict Mode safety)
             if (prev.find((h) => h.ttl === msg.data.ttl)) return prev;
@@ -104,31 +102,44 @@ export default function Dashboard({
   }, [target, onComplete]);
 
   useEffect(() => {
-    setPingPackets([]);
-    setTraceHops([]);
-    setPingData(null);
-    setTraceData(null);
-    setDnsData(null);
-    setDiagnosis(null);
-    setClientIP("");
-    setTraceStatus("initializing"); // Immediately show loading state when target changes
+    const startDiagnostic = async () => {
+      setPingPackets([]);
+      setTraceHops([]);
+      setPingData(null);
+      setTraceData(null);
+      setDnsData(null);
+      setDiagnosis(null);
+      setClientIP("");
+      setTraceStatus("initializing");
 
-    fetch(`${API_URL}/api/diagnose`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({ target }),
-    }).catch((err) => {
-      console.error("Diagnosis request failed:", err);
-      setTraceStatus("idle");
-    });
+      try {
+        // Fetch real IP to bypass Docker NAT
+        const ipResponse = await fetch("https://api.ipify.org?format=json");
+        const ipData = await ipResponse.json();
+        const realUserIp = ipData.ip;
+
+        await fetch(`${API_URL}/api/diagnose`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ 
+            target: target,
+            client_ip: realUserIp // Pass explicit IP to Go backend
+          }),
+        });
+      } catch (err) {
+        console.error("Diagnosis request failed:", err);
+        setTraceStatus("idle");
+      }
+    };
+
+    startDiagnostic();
   }, [target]);
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
       
-      {/* Updated IP Info Banner */}
       {clientIP && (
         <div className="lg:col-span-2 bg-gray-900 border border-gray-800 rounded-xl p-4 text-sm text-gray-300">
           Tracing from edge probe near your IP:
@@ -142,7 +153,6 @@ export default function Dashboard({
         </div>
       )}
 
-      {/* New Loading Banner for Globalping Initializing Phase */}
       {traceStatus === "initializing" && (
         <div className="lg:col-span-2 bg-blue-900/20 border border-blue-800/50 rounded-xl p-4 text-sm text-blue-300 flex items-center">
           <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-blue-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
