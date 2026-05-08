@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+
 import PingChart from "./PingChart";
 import TracerouteMap from "./TracerouteMap";
 import DnsBenchmark from "./DnsBenchmark";
@@ -31,20 +32,40 @@ export default function Dashboard({
 
   const [pingPackets, setPingPackets] = useState<any[]>([]);
   const [traceHops, setTraceHops] = useState<any[]>([]);
-  
-  // State to manage the Globalping delay
-  const [traceStatus, setTraceStatus] = useState<"idle" | "initializing" | "tracing" | "complete">("idle");
+
+  const [traceStatus, setTraceStatus] = useState<
+    "idle" | "initializing" | "tracing" | "complete"
+  >("idle");
 
   const [clientIP, setClientIP] = useState("");
 
   const wsRef = useRef<WebSocket | null>(null);
 
+  // RESET STATE
+  useEffect(() => {
+    setPingPackets([]);
+    setTraceHops([]);
+    setPingData(null);
+    setTraceData(null);
+    setDnsData(null);
+    setDiagnosis(null);
+    setClientIP("");
+    setTraceStatus("initializing");
+  }, [target]);
+
+  // WEBSOCKET
   useEffect(() => {
     const wsUrl = API_URL.replace(/^http/, "ws") + "/ws";
+
     const ws = new WebSocket(wsUrl);
+
     wsRef.current = ws;
 
-    ws.onmessage = (event: MessageEvent) => {
+    ws.onopen = () => {
+      console.log("WebSocket connected");
+    };
+
+    ws.onmessage = (event) => {
       const msg: WebSocketMessage = JSON.parse(event.data);
 
       switch (msg.type) {
@@ -61,12 +82,23 @@ export default function Dashboard({
           break;
 
         case "traceroute_hop":
-          setTraceStatus("tracing"); 
+          setTraceStatus("tracing");
+
           setTraceHops((prev) => {
-            // Prevent duplicate hops (Next.js Strict Mode safety)
-            if (prev.find((h) => h.ttl === msg.data.ttl)) return prev;
-            return [...prev, msg.data].sort((a, b) => a.ttl - b.ttl);
+            // dedupe by ttl+ip
+            const exists = prev.some(
+              (h) =>
+                h.ttl === msg.data.ttl &&
+                h.ip === msg.data.ip
+            );
+
+            if (exists) return prev;
+
+            return [...prev, msg.data].sort(
+              (a, b) => a.ttl - b.ttl
+            );
           });
+
           break;
 
         case "traceroute_complete":
@@ -82,18 +114,11 @@ export default function Dashboard({
           setDiagnosis(msg.data);
           onComplete();
           break;
-
-        default:
-          console.warn("Unknown websocket message:", msg);
       }
     };
 
     ws.onerror = (err) => {
-      console.error("WebSocket error:", err);
-    };
-
-    ws.onclose = () => {
-      console.log("WebSocket disconnected");
+      console.error("WS error:", err);
     };
 
     return () => {
@@ -101,67 +126,66 @@ export default function Dashboard({
     };
   }, [target, onComplete]);
 
+  // START DIAGNOSIS
   useEffect(() => {
-    const startDiagnostic = async () => {
-      setPingPackets([]);
-      setTraceHops([]);
-      setPingData(null);
-      setTraceData(null);
-      setDnsData(null);
-      setDiagnosis(null);
-      setClientIP("");
-      setTraceStatus("initializing");
-
+    async function run() {
       try {
-        // Fetch real IP to bypass Docker NAT
-        const ipResponse = await fetch("https://api.ipify.org?format=json");
-        const ipData = await ipResponse.json();
-        const realUserIp = ipData.ip;
+        const ipRes = await fetch(
+          "https://api.ipify.org?format=json"
+        );
+
+        const ipData = await ipRes.json();
 
         await fetch(`${API_URL}/api/diagnose`, {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
           },
-          body: JSON.stringify({ 
-            target: target,
-            client_ip: realUserIp // Pass explicit IP to Go backend
+          body: JSON.stringify({
+            target,
+            client_ip: ipData.ip,
           }),
         });
       } catch (err) {
-        console.error("Diagnosis request failed:", err);
-        setTraceStatus("idle");
+        console.error(err);
       }
-    };
+    }
 
-    startDiagnostic();
+    run();
   }, [target]);
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-      
+
       {clientIP && (
-        <div className="lg:col-span-2 bg-gray-900 border border-gray-800 rounded-xl p-4 text-sm text-gray-300">
-          Tracing from edge probe near your IP:
-          <span className="text-emerald-400 font-medium ml-1">
+        <div className="lg:col-span-2 bg-gray-900 border border-gray-800 rounded-xl p-4 text-sm">
+          <span className="text-gray-400">
+            Approximate route from probe near
+          </span>
+
+          <span className="text-emerald-400 ml-2 font-semibold">
             {clientIP}
           </span>
-          {" → "}
-          <span className="text-emerald-400 font-medium">
+
+          <span className="text-gray-500 mx-2">
+            →
+          </span>
+
+          <span className="text-emerald-400 font-semibold">
             {target}
           </span>
         </div>
       )}
 
       {traceStatus === "initializing" && (
-        <div className="lg:col-span-2 bg-blue-900/20 border border-blue-800/50 rounded-xl p-4 text-sm text-blue-300 flex items-center">
-          <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-blue-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-          </svg>
-          <span>
-            <strong className="text-blue-400 font-semibold">Locating nearest edge probe...</strong> This usually takes 2-4 seconds.
-          </span>
+        <div className="lg:col-span-2 bg-blue-500/10 border border-blue-500/20 rounded-xl p-4">
+          <div className="flex items-center gap-3">
+            <div className="w-4 h-4 border-2 border-blue-400 border-t-transparent rounded-full animate-spin" />
+
+            <div className="text-blue-300 text-sm">
+              Locating nearest Globalping probe...
+            </div>
+          </div>
         </div>
       )}
 
@@ -169,21 +193,26 @@ export default function Dashboard({
         <h2 className="text-xl font-semibold mb-4 text-emerald-400">
           Ping
         </h2>
-        <PingChart packets={pingPackets} result={pingData} />
+
+        <PingChart
+          packets={pingPackets}
+          result={pingData}
+        />
       </div>
 
       <div className="bg-gray-900 rounded-xl p-6 border border-gray-800">
         <h2 className="text-xl font-semibold mb-4 text-emerald-400">
           DNS Benchmark
         </h2>
+
         <DnsBenchmark data={dnsData} />
       </div>
 
       <div className="bg-gray-900 rounded-xl p-6 border border-gray-800 lg:col-span-2">
-        <h2 className="text-xl font-semibold mb-4 text-emerald-400 flex items-center gap-2">
-          Traceroute Map 
-          {traceStatus === "tracing" && <span className="text-sm text-gray-400 font-normal animate-pulse">(Routing...)</span>}
+        <h2 className="text-xl font-semibold mb-4 text-emerald-400">
+          Traceroute Map
         </h2>
+
         <TracerouteMap hops={traceHops} />
       </div>
 
@@ -191,6 +220,7 @@ export default function Dashboard({
         <h2 className="text-xl font-semibold mb-4 text-emerald-400">
           Network Topology
         </h2>
+
         <NetworkTopology hops={traceHops} />
       </div>
 
@@ -198,6 +228,7 @@ export default function Dashboard({
         <h2 className="text-xl font-semibold mb-4 text-emerald-400">
           Diagnosis
         </h2>
+
         <IssuePanel diagnosis={diagnosis} />
       </div>
     </div>
