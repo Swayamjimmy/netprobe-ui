@@ -8,6 +8,7 @@ import DnsBenchmark from "./DnsBenchmark";
 import NetworkTopology from "./NetworkTopology";
 import IssuePanel from "./IssuePanel";
 import SpeedTestPanel from "./SpeedTestPanel";
+import TracerouteExplainer from "./TracerouteExplainer";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080";
 
@@ -199,7 +200,9 @@ export default function Dashboard({ target, onComplete }: DashboardProps) {
           Traceroute Map
         </h2>
         <TracerouteMap hops={traceHops} />
+        <TracerouteExplainer />
       </div>
+      
 
       <div className="bg-gray-900 rounded-xl p-6 border border-gray-800">
         <h2 className="text-xl font-semibold mb-4 text-emerald-400">
