@@ -7,9 +7,9 @@ import TracerouteMap from "./TracerouteMap";
 import DnsBenchmark from "./DnsBenchmark";
 import NetworkTopology from "./NetworkTopology";
 import IssuePanel from "./IssuePanel";
+import SpeedTestPanel from "./SpeedTestPanel";
 
-const API_URL =
-  process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080";
+const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080";
 
 interface DashboardProps {
   target: string;
@@ -21,10 +21,7 @@ interface WebSocketMessage {
   data: any;
 }
 
-export default function Dashboard({
-  target,
-  onComplete,
-}: DashboardProps) {
+export default function Dashboard({ target, onComplete }: DashboardProps) {
   const [pingData, setPingData] = useState<any>(null);
   const [traceData, setTraceData] = useState<any>(null);
   const [dnsData, setDnsData] = useState<any>(null);
@@ -38,6 +35,10 @@ export default function Dashboard({
   >("idle");
 
   const [clientIP, setClientIP] = useState("");
+  
+  // Speed Test State
+  const [speedProgress, setSpeedProgress] = useState<any>(null);
+  const [speedData, setSpeedData] = useState<any>(null);
 
   const wsRef = useRef<WebSocket | null>(null);
 
@@ -51,6 +52,8 @@ export default function Dashboard({
     setDiagnosis(null);
     setClientIP("");
     setTraceStatus("initializing");
+    setSpeedProgress(null);
+    setSpeedData(null);
   }, [target]);
 
   // WEBSOCKET
@@ -87,16 +90,12 @@ export default function Dashboard({
           setTraceHops((prev) => {
             // dedupe by ttl+ip
             const exists = prev.some(
-              (h) =>
-                h.ttl === msg.data.ttl &&
-                h.ip === msg.data.ip
+              (h) => h.ttl === msg.data.ttl && h.ip === msg.data.ip
             );
 
             if (exists) return prev;
 
-            return [...prev, msg.data].sort(
-              (a, b) => a.ttl - b.ttl
-            );
+            return [...prev, msg.data].sort((a, b) => a.ttl - b.ttl);
           });
 
           break;
@@ -108,6 +107,15 @@ export default function Dashboard({
 
         case "dns_complete":
           setDnsData(msg.data);
+          break;
+
+        case "speedtest_progress":
+          setSpeedProgress(msg.data);
+          break;
+
+        case "speedtest_complete":
+          setSpeedData(msg.data);
+          setSpeedProgress(null); // Clear progress when complete
           break;
 
         case "diagnosis":
@@ -130,9 +138,7 @@ export default function Dashboard({
   useEffect(() => {
     async function run() {
       try {
-        const ipRes = await fetch(
-          "https://api.ipify.org?format=json"
-        );
+        const ipRes = await fetch("https://api.ipify.org?format=json");
 
         const ipData = await ipRes.json();
 
@@ -156,24 +162,12 @@ export default function Dashboard({
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-
       {clientIP && (
         <div className="lg:col-span-2 bg-gray-900 border border-gray-800 rounded-xl p-4 text-sm">
-          <span className="text-gray-400">
-            Approximate route from probe near
-          </span>
-
-          <span className="text-emerald-400 ml-2 font-semibold">
-            {clientIP}
-          </span>
-
-          <span className="text-gray-500 mx-2">
-            →
-          </span>
-
-          <span className="text-emerald-400 font-semibold">
-            {target}
-          </span>
+          <span className="text-gray-400">Approximate route from probe near</span>
+          <span className="text-emerald-400 ml-2 font-semibold">{clientIP}</span>
+          <span className="text-gray-500 mx-2">→</span>
+          <span className="text-emerald-400 font-semibold">{target}</span>
         </div>
       )}
 
@@ -181,7 +175,6 @@ export default function Dashboard({
         <div className="lg:col-span-2 bg-blue-500/10 border border-blue-500/20 rounded-xl p-4">
           <div className="flex items-center gap-3">
             <div className="w-4 h-4 border-2 border-blue-400 border-t-transparent rounded-full animate-spin" />
-
             <div className="text-blue-300 text-sm">
               Locating nearest Globalping probe...
             </div>
@@ -190,21 +183,14 @@ export default function Dashboard({
       )}
 
       <div className="bg-gray-900 rounded-xl p-6 border border-gray-800">
-        <h2 className="text-xl font-semibold mb-4 text-emerald-400">
-          Ping
-        </h2>
-
-        <PingChart
-          packets={pingPackets}
-          result={pingData}
-        />
+        <h2 className="text-xl font-semibold mb-4 text-emerald-400">Ping</h2>
+        <PingChart packets={pingPackets} result={pingData} />
       </div>
 
       <div className="bg-gray-900 rounded-xl p-6 border border-gray-800">
         <h2 className="text-xl font-semibold mb-4 text-emerald-400">
           DNS Benchmark
         </h2>
-
         <DnsBenchmark data={dnsData} />
       </div>
 
@@ -212,7 +198,6 @@ export default function Dashboard({
         <h2 className="text-xl font-semibold mb-4 text-emerald-400">
           Traceroute Map
         </h2>
-
         <TracerouteMap hops={traceHops} />
       </div>
 
@@ -220,15 +205,20 @@ export default function Dashboard({
         <h2 className="text-xl font-semibold mb-4 text-emerald-400">
           Network Topology
         </h2>
-
         <NetworkTopology hops={traceHops} />
       </div>
 
       <div className="bg-gray-900 rounded-xl p-6 border border-gray-800">
         <h2 className="text-xl font-semibold mb-4 text-emerald-400">
+          Throughput Speed
+        </h2>
+        <SpeedTestPanel progress={speedProgress} result={speedData} />
+      </div>
+
+      <div className="bg-gray-900 rounded-xl p-6 border border-gray-800 lg:col-span-2">
+        <h2 className="text-xl font-semibold mb-4 text-emerald-400">
           Diagnosis
         </h2>
-
         <IssuePanel diagnosis={diagnosis} />
       </div>
     </div>
