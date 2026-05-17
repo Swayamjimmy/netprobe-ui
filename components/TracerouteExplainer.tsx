@@ -12,7 +12,7 @@ export default function TracerouteExplainer() {
         className="w-full flex items-center justify-between p-4 text-left hover:bg-gray-800/50 transition-colors"
       >
         <div className="flex items-center gap-3">
-          <span className="text-xl">🤔</span>
+          <span className="text-xl"></span>
           <h3 className="text-lg font-medium text-gray-200">
             Why does my route look strange? (Global Routing Quirks)
           </h3>
